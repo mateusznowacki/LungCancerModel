@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import os
 
 # === Wczytanie danych ===
-df = pd.read_csv("dataset_smote.csv")
+df = pd.read_csv("dataset_prepared.csv")
 
 column_renames = {
     "Alcohol use": "Alcohol_Use",
@@ -64,7 +64,7 @@ print("[XGBoost] Evaluation:")
 print(f"Accuracy: {xgb_acc:.4f} | F1: {xgb_f1:.4f} | Precision: {xgb_prec:.4f} | Recall: {xgb_rec:.4f}")
 print(classification_report(y_test, xgb_preds, digits=4))
 
-# === Model 2: Ulepszony Cost-Sensitive z Weighted BCE ===
+# === Model 2: Cost-Sensitive NN z trzema mechanizmami ===
 class_counts = np.bincount(y_train)
 total_samples = len(y_train)
 class_weights = torch.tensor([total_samples / (2.0 * c) for c in class_counts], dtype=torch.float32)
@@ -96,18 +96,25 @@ class CostSensitiveNet(nn.Module):
         x = self.dropout(x)
         return self.out(x)
 
-model = CostSensitiveNet(X.shape[1])
-
-class WeightedBinaryCrossEntropy(nn.Module):
-    def __init__(self, weights):
+class CombinedCostSensitiveLoss(nn.Module):
+    def __init__(self, weights, reg_weight=0.7, boost_weight=2.0):
         super().__init__()
         self.weights = weights
+        self.reg_weight = reg_weight
+        self.boost_weight = boost_weight
 
     def forward(self, inputs, targets):
+        probs = torch.sigmoid(inputs)
+        base_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
         weights = targets * self.weights[1] + (1 - targets) * self.weights[0]
-        return F.binary_cross_entropy_with_logits(inputs, targets, weight=weights)
+        weighted_loss = base_loss * weights
+        margin_penalty = targets * torch.clamp(1 - probs, min=0)
+        boost_factor = 1 + self.boost_weight * torch.abs(targets - probs)
+        total_loss = (weighted_loss + self.reg_weight * margin_penalty) * boost_factor
+        return total_loss.mean()
 
-loss_fn = WeightedBinaryCrossEntropy(class_weights)
+model = CostSensitiveNet(X.shape[1])
+loss_fn = CombinedCostSensitiveLoss(class_weights)
 optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-5)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
@@ -174,7 +181,7 @@ width = 0.35
 
 plt.figure(figsize=(10, 6))
 plt.bar(x - width/2, xgb_scores, width, label='XGBoost')
-plt.bar(x + width/2, torch_scores, width, label='Cost-sensitive (Weighted BCE)')
+plt.bar(x + width/2, torch_scores, width, label='Cost-sensitive (NN)')
 plt.ylabel('Score')
 plt.title('Porównanie wyników modeli')
 plt.xticks(x, labels)

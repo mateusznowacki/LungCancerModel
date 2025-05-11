@@ -11,7 +11,7 @@ import xgboost as xgb
 import matplotlib.pyplot as plt
 
 # === Wczytanie danych ===
-df = pd.read_csv("mammography.csv", header=None)
+df = pd.read_csv("mammography_smote.csv", header=None)
 X = df.iloc[:, :-1].values.astype(np.float32)
 y = df.iloc[:, -1].values
 y = LabelEncoder().fit_transform(y)  # -1 → 0, 1 → 1
