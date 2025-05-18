@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import os
 
 # === Wczytanie danych ===
-df = pd.read_csv("dataset_prepared.csv")
+df = pd.read_csv("dataset_smote.csv")
 
 column_renames = {
     "Alcohol use": "Alcohol_Use",
